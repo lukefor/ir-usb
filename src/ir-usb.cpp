@@ -1,15 +1,18 @@
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <errno.h>
+#include <chrono>
+#include <thread>
 
+#include "getopt.h"
 #include "TiqiaaUsb.h"
 
 static FILE *io_file = NULL;
 static bool signal_received;
 
-static void test_callback(uint8_t * data, int size, class TiqiaaUsbIr * IrCls, void * context) {
+static void test_callback(uint8_t* data, int size, TiqiaaUsbIr* IrCls, void* context)
+{
     printf("INFO: Received data %d\n", size);
     fwrite(data, sizeof(char), size, io_file);
     fclose(io_file);
@@ -23,32 +26,45 @@ static const char usage[] =
     "  -r   Receive IR signal and store to file_path\n"
     "  -s   Send IR signal from file_path\n";
 
-int main(int argc, char *argv[]) {
+int main(int argc, char *argv[])
+{
     int err = 0;
     int c;
 
-    while( (c = getopt(argc, argv, "hr:s:")) != -1 ) {
-        switch( c ) {
-        case 'h':
-            printf("%s", usage);
-            return EXIT_SUCCESS;
-        case 's':
-        case 'r':
-            break; // Just check it's ok
-        case '?':
-            if( isprint(optopt) )
-              fprintf(stderr, "ERROR: Unknown option `-%c'.\n", optopt);
-            else
-              fprintf(stderr, "ERROR: Unknown option character `\\x%x'.\n", optopt);
-            return 1;
-        default:
-            break;
+    while ((c = getopt(argc, argv, "hr:s:")) != -1)
+    {
+        switch (c)
+        {
+            case 'h':
+                printf("%s", usage);
+                return EXIT_SUCCESS;
+            case 's':
+            case 'r':
+                break; // Just check it's ok
+            case '?':
+                if (isprint(optopt))
+                  fprintf(stderr, "ERROR: Unknown option `-%c'.\n", optopt);
+                else
+                  fprintf(stderr, "ERROR: Unknown option character `\\x%x'.\n", optopt);
+                return 1;
+            default:
+                break;
         }
     }
 
     TiqiaaUsbIr Ir;
     Ir.IrRecvCallback = test_callback;
-    if( Ir.Open() ) {
+    std::vector<std::string> DevList;
+    if (Ir.EnumDevices(DevList))
+    {
+        if (DevList.size() > 0)
+        {
+            Ir.Open(DevList[0].c_str());
+        }
+    }
+
+    if (Ir.IsOpen())
+    {
         fprintf(stderr, "INFO: Device opened\n");
 
         for( int i = 1; i < argc; i += 2 ) {
@@ -88,7 +104,7 @@ int main(int argc, char *argv[]) {
                 if( Ir.StartRecvIR() ) {
                     fprintf(stderr, "INFO: Waiting for IR signal\n");
                     while( !signal_received )
-                        usleep(1000);
+                        std::this_thread::sleep_for(std::chrono::microseconds(1000));
                 } else
                     fprintf(stderr, "ERROR: Unable to receive IR\n");
             }
